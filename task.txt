@@ -1,0 +1,46 @@
+Ты — Lead 3D Web Graphics Engineer и разработчик инженерных симуляторов. 
+
+Твоя задача — спроектировать и развернуть с нуля модульное SPA-приложение (Digital Twin / Инженерный 3D-тренажер), детально визуализирующее в реальном 3D и гидрофизике работу комплекса The Dubai Fountain (подводная пневмопушка ExtremeShooter и поворотный серво-модуль Oarsmen).
+
+Проект должен быть полноценным, масштабируемым multi-file проектом на TypeScript, готовым к локальному запуску через `npm run dev`.
+
+---
+
+### ТЕХНОЛОГИЧЕСКИЙ СТЕК:
+- **Сборщик и язык:** Vite + TypeScript
+- **3D движок:** Three.js (с OrbitControls, EffectComposer для Bloom/Post-processing)
+- **Стилизация:** Tailwind CSS
+- **Графика и физика:** Custom GLSL Shaders (для воды и рассеивания), InstancedMesh / GPU Particle System для 50 000+ капель воды.
+- **Телеметрия:** Chart.js для отрисовки графиков переходных процессов в реальном времени.
+- **Звук:** Web Audio API (процедурный аудио-движок).
+
+---
+
+### СТРУКТУРА ПРОЕКТА (Ожидаемая архитектура файлов):
+```text
+dubai-fountain-simulator/
+├── index.html
+├── package.json
+├── tsconfig.json
+├── tailwind.config.js
+├── vite.config.ts
+└── src/
+    ├── main.ts
+    ├── physics/
+    │   ├── HydroDynamics.ts       // Расчет давлений, формулы Бернулли и Торичелли
+    │   ├── PneumaticAccumulator.ts // Адиабатическое расширение газа (P*V^gamma)
+    │   └── CommunicatingVessels.ts // Дифференциал гидростатического заполнения
+    ├── scene/
+    │   ├── SceneManager.ts        // Камера, свет, PBR-материалы, рендер-луп
+    │   ├── Environment.ts         // Озеро, небо, силуэт Burj Khalifa, дно озера
+    │   ├── FountainModel.ts       // 3D-геометрия пушки, поршня, клапанов и ресивера
+    │   ├── CutawayPlane.ts        // Clipping Planes для эффекта CAD-разреза в реальном времени
+    │   └── WaterParticles.ts      // Высокопроизводительная система частиц выстрела (GPU Instancing)
+    ├── audio/
+    │   └── SoundEngine.ts         // Процедурный синтез хлопка выстрела, шипения и брызг
+    ├── ui/
+    │   ├── HUD.ts                 // Оверлей приборов, спидометры и датчики
+    │   ├── TelemetryChart.ts      // Графики давления и расхода воды (P(t), Q(t))
+    │   └── ControlPanel.ts        // Слайдеры, триггеры, тумблеры среза CAD
+    └── styles/
+        └── main.css
