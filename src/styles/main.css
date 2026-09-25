@@ -1,0 +1,167 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --hud-cyan: #38bdf8;
+  --hud-amber: #fbbf24;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #04070d;
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: #cbd5e1;
+  user-select: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+#app {
+  position: fixed;
+  inset: 0;
+}
+
+canvas.webgl {
+  position: absolute;
+  inset: 0;
+  display: block;
+  outline: none;
+}
+
+/* ---------- HUD glass panels ---------- */
+.hud-panel {
+  @apply bg-hud-bg backdrop-blur-md border border-hud-border rounded-lg shadow-hud;
+}
+
+.hud-title {
+  @apply text-[10px] uppercase tracking-[0.25em] text-sky-400/80 font-semibold;
+}
+
+.hud-value {
+  @apply text-sky-300 tabular-nums font-bold leading-none;
+}
+
+.hud-unit {
+  @apply text-[9px] text-slate-500 uppercase tracking-wider;
+}
+
+/* ---------- Gauges ---------- */
+.gauge-label {
+  @apply text-[9px] uppercase tracking-widest text-slate-400;
+}
+
+/* ---------- Sliders ---------- */
+input[type='range'].hud-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 4px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, rgba(56, 189, 248, 0.6) var(--fill, 50%), rgba(148, 163, 184, 0.15) var(--fill, 50%));
+  outline: none;
+  cursor: pointer;
+}
+
+input[type='range'].hud-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #0ea5e9;
+  border: 2px solid #7dd3fc;
+  box-shadow: 0 0 10px rgba(56, 189, 248, 0.8);
+  cursor: grab;
+}
+
+input[type='range'].hud-slider::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #0ea5e9;
+  border: 2px solid #7dd3fc;
+  box-shadow: 0 0 10px rgba(56, 189, 248, 0.8);
+  cursor: grab;
+}
+
+/* ---------- Buttons / toggles ---------- */
+.hud-btn {
+  @apply px-3 py-1.5 rounded border border-sky-500/40 bg-sky-500/10 text-sky-300 text-[11px] uppercase tracking-widest
+    hover:bg-sky-400/25 hover:border-sky-300 active:scale-95 transition-all duration-100;
+}
+
+.hud-btn-fire {
+  @apply px-4 py-2 rounded border border-amber-400/60 bg-amber-500/15 text-amber-300 text-xs font-bold uppercase tracking-[0.2em]
+    hover:bg-amber-400/30 hover:border-amber-300 active:scale-95 transition-all duration-75;
+}
+
+.hud-btn-fire:disabled {
+  @apply opacity-30 cursor-not-allowed;
+}
+
+.hud-toggle {
+  @apply relative inline-flex h-4 w-8 items-center rounded-full border border-slate-600 bg-slate-800 transition-colors duration-150;
+}
+
+.hud-toggle .knob {
+  @apply inline-block h-2.5 w-2.5 translate-x-0.5 rounded-full bg-slate-400 transition-transform duration-150;
+}
+
+.hud-toggle.on {
+  @apply border-sky-400 bg-sky-500/40;
+}
+
+.hud-toggle.on .knob {
+  @apply translate-x-[18px] bg-sky-200;
+}
+
+/* ---------- Status LED ---------- */
+.led {
+  @apply inline-block h-2 w-2 rounded-full;
+}
+
+.led-green {
+  box-shadow: 0 0 8px #34d399;
+  background: #34d399;
+}
+
+.led-amber {
+  box-shadow: 0 0 8px #fbbf24;
+  background: #fbbf24;
+}
+
+.led-red {
+  box-shadow: 0 0 8px #f87171;
+  background: #f87171;
+  animation: blink 0.35s steps(2) infinite;
+}
+
+.led-off {
+  background: #334155;
+}
+
+@keyframes blink {
+  50% { opacity: 0.25; }
+}
+
+/* Scrollbars inside panels */
+.scroll-slim::-webkit-scrollbar { width: 5px; }
+.scroll-slim::-webkit-scrollbar-track { background: transparent; }
+.scroll-slim::-webkit-scrollbar-thumb { background: rgba(56, 189, 248, 0.25); border-radius: 3px; }
+
+/* Fire button shockwave pulse */
+@keyframes fire-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(251, 191, 36, 0.7); }
+  100% { box-shadow: 0 0 0 22px rgba(251, 191, 36, 0); }
+}
+
+.fire-pulse {
+  animation: fire-pulse 0.5s ease-out;
+}
+
+kbd.key {
+  @apply px-1.5 py-0.5 rounded border border-slate-600 bg-slate-800 text-slate-300 text-[10px];
+}
