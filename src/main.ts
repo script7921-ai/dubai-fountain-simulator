@@ -61,7 +61,7 @@ let fpsTime = 0;
 let fps = 60;
 let dripTimer = 0;
 
-scene.start((realDt /* , visualTime */) => {
+scene.start({ onFrame: (realDt /* , visualTime */) => {
   // Физика с масштабом времени
   accumulator += realDt * sim.config.timeScale;
   let steps = 0;
@@ -120,7 +120,7 @@ scene.start((realDt /* , visualTime */) => {
   hud.update(fps, scene.particles.particleBudget);
   charts.update();
   panel.setFireEnabled(sim.phase === GunPhase.IDLE && sim.accumulator.chargeFraction > 0.35);
-});
+} });
 
 // ---------------- Hotkeys ----------------
 window.addEventListener('keydown', (ev) => {

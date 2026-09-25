@@ -127,7 +127,7 @@ export class ControlPanel {
 
     // Тумблеры
     for (const id of ['tCut', 'tBloom', 'tAudio', 'tShow']) {
-      const el = this.root.querySelector(`#wrap-${id}`)!;
+      const el = this.root.querySelector(`#wrap-${id}`) as HTMLElement;
       this.toggles.set(id, el);
       el.addEventListener('click', () => this.flipToggle(id));
     }
@@ -192,7 +192,7 @@ export class ControlPanel {
     this.sim.setConfig(next);
     this.applySideEffects(Object.keys(next)[0] as keyof SimConfig);
     this.syncToggles();
-    const cutHost = this.root.querySelector('#cp-cut-slider')!;
+    const cutHost = this.root.querySelector('#cp-cut-slider') as HTMLElement;
     cutHost.classList.toggle('hidden', !c.cutawayEnabled);
   }
 
@@ -210,14 +210,14 @@ export class ControlPanel {
   /** Синхронизация UI извне (горячие клавиши) */
   refresh(): void {
     for (const [key, input] of this.sliderEls) {
-      const v = this.sim.config[key] as number;
+      const v = this.sim.config[key as keyof SimConfig] as number;
       if (Math.abs(Number(input.value) - v) > Number(input.step) / 2) {
         input.value = String(v);
         input.dispatchEvent(new Event('input'));
       }
     }
     this.syncToggles();
-    const cutHost = this.root.querySelector('#cp-cut-slider')!;
+    const cutHost = this.root.querySelector('#cp-cut-slider') as HTMLElement;
     cutHost.classList.toggle('hidden', !this.sim.config.cutawayEnabled);
   }
 

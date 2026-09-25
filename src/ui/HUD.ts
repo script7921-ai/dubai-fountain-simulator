@@ -4,7 +4,7 @@
  */
 
 import { GunPhase } from '../core/types';
-import type { FountainSimulator } from '../physics/FountainSimulator';
+import type { FountainSimulator, GunReadout } from '../physics/FountainSimulator';
 
 interface GaugeSpec {
   id: string;
@@ -12,7 +12,7 @@ interface GaugeSpec {
   unit: string;
   max: number;
   color: string;
-  get: (s: ReturnType<FountainSimulator['readout']>) => number;
+  get: (s: GunReadout) => number;
 }
 
 const GAUGES: GaugeSpec[] = [

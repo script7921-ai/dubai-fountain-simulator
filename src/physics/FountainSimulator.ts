@@ -44,6 +44,28 @@ export interface TelemetrySample {
   elevation: number; // угол возвышения
 }
 
+/** Снимок состояния пушки для HUD/панели (типизированный контракт readout). */
+export interface GunReadout {
+  phase: GunPhase;
+  time: number;
+  pAccumBar: number;
+  pChamberBar: number;
+  chargeFrac: number;
+  gasTempC: number;
+  jetVelocity: number;
+  flowLps: number;
+  jetHeight: number;
+  valvePct: number;
+  pistonTravel: number;
+  fillPct: number;
+  reynolds: number;
+  pumpKw: number;
+  azimuth: number;
+  azimuthTarget: number;
+  azimuthVel: number;
+  elevation: number;
+}
+
 export class FountainSimulator {
   readonly bus = new EventBus();
   config: SimConfig = { ...DEFAULT_CONFIG };
@@ -316,7 +338,7 @@ export class FountainSimulator {
   }
 
   /** Снимок для HUD */
-  get readout() {
+  get readout(): GunReadout {
     return {
       phase: this.phase,
       time: this.time,

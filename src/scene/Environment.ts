@@ -9,7 +9,7 @@ import * as THREE from 'three';
 
 export class Environment {
   readonly group = new THREE.Group();
-  readonly lakeMaterial: THREE.ShaderMaterial;
+  lakeMaterial!: THREE.ShaderMaterial;
   private uTime = { value: 0 };
   private uRipple = { value: new THREE.Vector4(0, 0, 0, 0) }; // x,z, birth, strength
 
