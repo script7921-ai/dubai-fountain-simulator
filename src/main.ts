@@ -117,7 +117,7 @@ scene.start({ onFrame: (realDt /* , visualTime */) => {
     fpsFrames = 0;
     fpsTime = 0;
   }
-  hud.update(fps, scene.particles.particleBudget);
+  hud.update(fps, scene.particles.particleBudget, realDt);
   charts.update();
   panel.setFireEnabled(sim.phase === GunPhase.IDLE && sim.accumulator.chargeFraction > 0.35);
 } });

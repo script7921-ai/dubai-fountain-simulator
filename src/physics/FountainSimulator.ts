@@ -106,12 +106,19 @@ export class FountainSimulator {
   private historyAccum = 0;
   private lastRe = 0;
 
-  /** Итерация сэмплов от старых к новым (для графиков) */
+  /** Итерация сэмплов от старых к новым */
   *history(): IterableIterator<TelemetrySample> {
     const start = (this.histHead - this.histCount + this.HISTORY_SIZE) % this.HISTORY_SIZE;
     for (let i = 0; i < this.histCount; i++) {
       yield this.histBuf[(start + i) % this.HISTORY_SIZE];
     }
+  }
+
+  /** Прямой доступ к i-му (от старых к новым) сэмплу истории — O(1), без аллокаций итератора */
+  historyAt(i: number): TelemetrySample | undefined {
+    if (i < 0 || i >= this.histCount) return undefined;
+    const start = (this.histHead - this.histCount + this.HISTORY_SIZE) % this.HISTORY_SIZE;
+    return this.histBuf[(start + i) % this.HISTORY_SIZE];
   }
 
   get historyLength(): number {

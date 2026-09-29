@@ -42,9 +42,10 @@ export class HUD {
   private phaseEl!: HTMLElement;
   private clockEl!: HTMLElement;
   private compassCtx!: CanvasRenderingContext2D;
-  private jetBar!: HTMLElement | null;
+  private jetBar!: HTMLElement;
   private lastLedClass = '';
   private lastPhaseColor = '';
+  private lastJetPct = -1;
   /** HUD обновляется не чаще 30 Гц — человеческий глаз не различает быстрее, а CPU экономится вдвое */
   private static readonly UI_INTERVAL = 1 / 30;
   private uiAccum = Infinity;
@@ -125,33 +126,50 @@ export class HUD {
       this.digital[key] = this.root.querySelector(`#v-${key}`) as HTMLElement;
     }
 
+    for (const g of GAUGES) {
+      this.gaugeCtxs.set(g.id, this.canvases.get(g.id)!.getContext('2d')!);
+    }
+
+    this.ledEl = this.root.querySelector('#hud-led') as HTMLElement;
+    this.phaseEl = this.root.querySelector('#hud-phase') as HTMLElement;
+    this.clockEl = this.root.querySelector('#hud-clock') as HTMLElement;
+    this.jetBar = this.root.querySelector('#hud-jetbar') as HTMLElement;
     this.compassCtx = (this.root.querySelector('#hud-compass') as HTMLCanvasElement).getContext('2d')!;
   }
 
-  private compassCtx!: CanvasRenderingContext2D;
-  private jetBar!: HTMLElement | null;
+  /** Кадровый вызов: тяжёлые canvas/DOM-обновления троттлятся до 30 Гц */
+  update(fps: number, particleCount: number, dt: number): void {
+    this.uiAccum += dt;
+    if (this.uiAccum < HUD.UI_INTERVAL) return;
+    // вычитаем интервал, а не обнуляем — без дрейфа частоты при плавающем fps
+    this.uiAccum = Math.min(this.uiAccum - HUD.UI_INTERVAL, HUD.UI_INTERVAL);
 
-  /** Обновление каждый кадр */
-  update(fps: number, particleCount: number): void {
     const s = this.sim.readout;
 
-    // Фаза / LED / clock
+    // Фаза / LED / clock (запись только при изменении — меньше перерисовок)
     const ph = PHASE_LABEL[s.phase];
-    const led = this.root.querySelector('#hud-led') as HTMLElement;
-    led.className = `led ${ph.led}`;
-    const phaseEl = this.root.querySelector('#hud-phase') as HTMLElement;
-    phaseEl.textContent = ph.ru;
-    phaseEl.style.color =
+    const ledClass = `led ${ph.led}`;
+    if (ledClass !== this.lastLedClass) {
+      this.ledEl.className = ledClass;
+      this.lastLedClass = ledClass;
+    }
+    setTxt(this.phaseEl, ph.ru);
+    const phaseColor =
       s.phase === GunPhase.FIRE ? '#f87171' : s.phase === GunPhase.IDLE ? '#34d399' : '#fbbf24';
-    (this.root.querySelector('#hud-clock') as HTMLElement).textContent = s.time.toFixed(2);
+    if (phaseColor !== this.lastPhaseColor) {
+      this.phaseEl.style.color = phaseColor;
+      this.lastPhaseColor = phaseColor;
+    }
+    setTxt(this.clockEl, s.time.toFixed(2));
 
     // Стрелки спидометров (EMA сглаживание)
     for (const g of GAUGES) {
-      const target = Math.min(1, Math.max(0, g.get(s) / g.max));
+      const value = g.get(s);
+      const target = Math.min(1, Math.max(0, value / g.max));
       const cur = this.needles.get(g.id) ?? 0;
       const next = cur + (target - cur) * 0.22;
       this.needles.set(g.id, next);
-      this.drawGauge(g, next, g.get(s));
+      this.drawGauge(g, next, value);
     }
 
     // Цифровые поля
@@ -169,18 +187,21 @@ export class HUD {
     setTxt(d.hEl, s.elevation.toFixed(1));
     setTxt(d.hParts, `${particleCount.toLocaleString('ru-RU')} @${fps.toFixed(0)}fps`);
 
-    // Jet bar
-    if (!this.jetBar) this.jetBar = this.root.querySelector('#hud-jetbar');
-    if (this.jetBar) this.jetBar.style.height = `${Math.min(100, (s.jetHeight / 160) * 100)}%`;
+    // Шкала высоты струи (запись стиля только при реальном изменении)
+    const jetPct = Math.round(Math.min(100, (s.jetHeight / 160) * 100) * 2) / 2;
+    if (jetPct !== this.lastJetPct) {
+      this.jetBar.style.height = `${jetPct}%`;
+      this.lastJetPct = jetPct;
+    }
 
     this.drawCompass(s.azimuth, s.azimuthTarget, s.azimuthVel);
   }
 
   // ---------- Canvas gauge ----------
   private drawGauge(spec: GaugeSpec, frac: number, value: number): void {
-    const cv = this.canvases.get(spec.id);
-    if (!cv) return;
-    const ctx = cv.getContext('2d')!;
+    const ctx = this.gaugeCtxs.get(spec.id);
+    if (!ctx) return;
+    const cv = ctx.canvas;
     const W = cv.width, H = cv.height;
     const cx = W / 2, cy = H * 0.62, R = Math.min(W, H) * 0.44;
     ctx.clearRect(0, 0, W, H);

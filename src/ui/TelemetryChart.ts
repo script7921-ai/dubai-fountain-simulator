@@ -17,7 +17,7 @@ import {
   Legend,
   Tooltip,
 } from 'chart.js';
-import type { FountainSimulator } from '../physics/FountainSimulator';
+import type { FountainSimulator, TelemetrySample } from '../physics/FountainSimulator';
 
 Chart.register(LineController, LineElement, PointElement, LinearScale, CategoryScale, Filler, Legend, Tooltip);
 
@@ -110,42 +110,81 @@ export class TelemetryChart {
 
   /** Кадровый апдейт: догружаем новые сэмплы, режем окно 8 сек */
   update(): void {
-    const hist = this.sim.history;
+    const n = this.sim.historyLength;
     const WINDOW = 8;
     const tMin = this.sim.time - WINDOW;
 
-    // Если произошёл reset истории (симуляция перезапущена)
-    if (hist.length < this.sentIdx || (hist.length > 0 && hist[0].t > tMin + WINDOW)) {
+    // Индекс oldest-сэмпла ещё жив в буфере? (после перезапуска симуляции — нет)
+    const oldest = n > 0 ? this.sim.historyAt(0) : undefined;
+    if (!oldest || oldest.t > this.sim.time - this.sim.HISTORY_SIZE / 60 + 1e-9) {
+      // буфер не замкнут или произошёл reset → пересобираем всё окно заново
       this.sentIdx = 0;
+      this.rebuildWindow(tMin);
+      return;
     }
 
-    const pAcc: { x: number; y: number }[] = [];
-    const pCh: { x: number; y: number }[] = [];
-    const q: { x: number; y: number }[] = [];
-    const v: { x: number; y: number }[] = [];
-
-    for (let i = Math.max(0, hist.length - 600); i < hist.length; i++) {
-      const s = hist[i];
-      if (s.t < tMin) continue;
-      pAcc.push({ x: s.t, y: s.pAccumBar });
-      pCh.push({ x: s.t, y: s.pChamberBar });
-      q.push({ x: s.t, y: s.qLps });
-      v.push({ x: s.t, y: s.vMs });
+    // 1) Сдвигаем левую границу окна: удаляем устаревшие точки с начала массивов Chart.js
+    const pruneTo = Math.min(this.sentIdx, n);
+    let drop = 0;
+    while (drop < pruneTo) {
+      const s = this.sim.historyAt(drop);
+      if (!s || s.t >= tMin) break;
+      drop++;
+    }
+    if (drop > 0) {
+      for (const ds of this.chartP.data.datasets) (ds.data as unknown[]).splice(0, drop);
+      for (const ds of this.chartQ.data.datasets) (ds.data as unknown[]).splice(0, drop);
+      this.sentIdx -= drop;
     }
 
+    // 2) Догружаем только новые сэмплы (догоняющая загрузка, O(new))
+    for (let i = this.sentIdx; i < n; i++) {
+      const s = this.sim.historyAt(i);
+      if (!s || s.t < tMin) continue;
+      this.pushSample(s);
+    }
+    this.sentIdx = n;
+
+    this.applyXRange(tMin);
+    this.chartP.update('none');
+    this.chartQ.update('none');
+  }
+
+  /** Полная пересборка окна (reset симуляции / первый кадр) */
+  private rebuildWindow(tMin: number): void {
     const cp = this.chartP.data.datasets;
-    cp[0].data = pAcc;
-    cp[1].data = pCh;
+    const cq = this.chartQ.data.datasets;
+    for (const ds of [cp[0], cp[1], cq[0], cq[1]]) (ds.data as unknown[]).length = 0;
+
+    const n = this.sim.historyLength;
+    for (let i = 0; i < n; i++) {
+      const s = this.sim.historyAt(i);
+      if (!s || s.t < tMin) continue;
+      this.pushSample(s);
+    }
+    this.sentIdx = n;
+
+    this.applyXRange(tMin);
+    this.chartP.update('none');
+    this.chartQ.update('none');
+  }
+
+  private pushSample(s: TelemetrySample): void {
+    const p = { x: s.t, y: s.pAccumBar };
+    const c = { x: s.t, y: s.pChamberBar };
+    const q = { x: s.t, y: s.qLps };
+    const v = { x: s.t, y: s.vMs };
+    (this.chartP.data.datasets[0].data as unknown[]).push(p);
+    (this.chartP.data.datasets[1].data as unknown[]).push(c);
+    (this.chartQ.data.datasets[0].data as unknown[]).push(q);
+    (this.chartQ.data.datasets[1].data as unknown[]).push(v);
+  }
+
+  private applyXRange(tMin: number): void {
     this.chartP.options.scales!.x!.min = tMin as never;
     this.chartP.options.scales!.x!.max = this.sim.time as never;
-    this.chartP.update('none');
-
-    const cq = this.chartQ.data.datasets;
-    cq[0].data = q;
-    cq[1].data = v;
     this.chartQ.options.scales!.x!.min = tMin as never;
     this.chartQ.options.scales!.x!.max = this.sim.time as never;
-    this.chartQ.update('none');
   }
 
   setVisible(show: boolean): void {
