@@ -54,9 +54,12 @@ void main() {
   vUv = uv;
   vSeed = aSeed;
 
-  float life = 2.2 + aSeed * 3.4;                       // жизнь капли, сек
-  float emitDelay = hash(aSeed * 91.7) * uDuration;     // момент внутри окна эмиссии
-  float birth = aSpawn + emitDelay;
+  // Все случайные величины — из одного immutable-зерна aSeed (атрибут инстанса).
+  // emitDelay больше не зависит от uDuration: изменение слайдера «импульс клапана»
+  // в полёте burst не пережигало бы возраст капель и не вызывало визуальный скачок.
+  float birthOff = hash(aSeed * 91.7 + 0.1234) * 0.9 + 0.05; // 0.05..0.95 стабильно
+  float life = 2.2 + hash(aSeed * 5.3 + 0.7) * 3.4;          // жизнь капли, сек
+  float birth = aSpawn + birthOff * max(uDuration, 0.001);
   float age = uTime - birth;
 
   vAge = age;
@@ -214,6 +217,19 @@ export class WaterParticles {
     // Спавним от текущего uTime (визуальные часы), а не от simTime физики:
     // при timeScale ≠ 1 они расходятся и капли «замирают»/стартуют с отрицательным возрастом
     const now = this.material.uniforms.uTime.value as number;
+
+    // Если предыдущий burst ещё активен — гасим его старые капли (ставим им
+    // «мгновенную смерть»), иначе uniform'ы улетевших частиц переписываются
+    // и оставшиеся живые капли телепортируются на новую позицию дула.
+    const prevDur = this.material.uniforms.uDuration.value as number;
+    const prevLifeMax = 5.6; // максимальная жизнь капли в шейдере: 2.2 + 3.4
+    if ((this.material.uniforms.uSpeed.value as number) > 0) {
+      for (let i = 0; i < MAX_PARTICLES; i++) {
+        const sp = arr[i];
+        if (sp > -1e2 && now - sp < prevDur + prevLifeMax) arr[i] = -1e3;
+      }
+    }
+
     for (let i = 0; i < count; i++) {
       arr[this.cursor] = now;
       this.cursor = (this.cursor + 1) % MAX_PARTICLES;
@@ -224,7 +240,7 @@ export class WaterParticles {
     (u.uOrigin.value as THREE.Vector3).copy(p.origin);
     (u.uDir.value as THREE.Vector3).copy(p.direction).normalize();
     u.uSpeed.value = p.velocity;
-    u.uDuration.value = p.duration;
+    u.uDuration.value = Math.max(0.02, p.duration);
     u.uSpread.value = 0.055 + 0.05 / (1 + p.velocity * 0.02);
     u.uTurb.value = 0.02 + p.velocity * 0.0016;
   }

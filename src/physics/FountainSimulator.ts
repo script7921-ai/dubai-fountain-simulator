@@ -372,6 +372,34 @@ export class FountainSimulator {
     if (this.histCount < this.HISTORY_SIZE) this.histCount++;
   }
 
+  /** Полная перезагрузка симуляции (кнопка RESET): обнуляет часы, фазы, историю */
+  reset(): void {
+    this.phase = GunPhase.IDLE;
+    this.time = 0;
+    this.phaseTime = 0;
+    this.pistonTravel = 0;
+    this.pistonSpeed = 0;
+    this.chamberPGauge = 0;
+    this.jetVelocity = 0;
+    this.flowRate = 0;
+    this.valveOpening = 0;
+    this.jetHeight = 0;
+    this.muzzleBroken = false;
+    this.showTimer = 0;
+    this.oarsmanAzimuth = this.config.azimuthDeg;
+    this.oarsmanTargetAzimuth = this.config.azimuthDeg;
+    this.oarsmanElevation = this.config.elevationDeg;
+    this.oarsmanVelocityDps = 0;
+    this.histBuf = [];
+    this.histHead = 0;
+    this.histCount = 0;
+    this.historyAccum = 0;
+    this.lastRe = 0;
+    this.vessels.refill();
+    // Восстановление после VENT: газ остыл/сброшен — заряжаем до текущей уставки
+    if (this.accumulator.chargeFraction < 1) this.accumulator.forceChargeToTarget();
+  }
+
   /** Снимок для HUD */
   get readout(): GunReadout {
     return {

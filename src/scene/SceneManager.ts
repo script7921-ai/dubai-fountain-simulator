@@ -42,6 +42,7 @@ export class SceneManager {
   private rafId = 0;
   private running = false;
   private callbacks: FrameCallbacks | null = null;
+  private disposed = false;
 
   // Вспышка выстрела (свет + тряска камеры)
   private muzzleFlash: THREE.PointLight;

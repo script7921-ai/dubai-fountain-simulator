@@ -21,12 +21,17 @@ import type { FountainSimulator, TelemetrySample } from '../physics/FountainSimu
 
 Chart.register(LineController, LineElement, PointElement, LinearScale, CategoryScale, Filler, Legend, Tooltip);
 
+/** Размер скользящего окна графиков, сек */
+const WINDOW_S = 8;
+
 export class TelemetryChart {
   private chartP: Chart;
   private chartQ: Chart;
   private root: HTMLElement;
-  /** Индекс последней отправленной точки истории */
+  /** Абсолютный индекс последнего отправленного сэмпла кольцевого буфера */
   private sentIdx = 0;
+  /** Время последней отправленной точки — детектор перезапуска симуляции */
+  private lastSentT = -1;
 
   constructor(container: HTMLElement, private sim: FountainSimulator) {
     this.root = document.createElement('div');
@@ -110,40 +115,41 @@ export class TelemetryChart {
 
   /** Кадровый апдейт: догружаем новые сэмплы, режем окно 8 сек */
   update(): void {
-    const n = this.sim.historyLength;
-    const WINDOW = 8;
-    const tMin = this.sim.time - WINDOW;
-
-    // Индекс oldest-сэмпла ещё жив в буфере? (после перезапуска симуляции — нет)
-    const oldest = n > 0 ? this.sim.historyAt(0) : undefined;
-    if (!oldest || oldest.t > this.sim.time - this.sim.HISTORY_SIZE / 60 + 1e-9) {
-      // буфер не замкнут или произошёл reset → пересобираем всё окно заново
-      this.sentIdx = 0;
-      this.rebuildWindow(tMin);
+    // Перезапуск симуляции (t «омолодел») или смена окна → полная пересборка
+    const latest = this.sim.historyAt(this.sim.historyLength - 1);
+    if (!latest || latest.t < this.lastSentT) {
+      this.rebuildWindow(this.sim.time - WINDOW_S);
       return;
     }
 
-    // 1) Сдвигаем левую границу окна: удаляем устаревшие точки с начала массивов Chart.js
-    const pruneTo = Math.min(this.sentIdx, n);
+    const n = this.sim.historyLength;
+    const tMin = this.sim.time - WINDOW_S;
+
+    // 1) Сдвигаем левую границу окна: удаляем устаревшие точки с начала массивов Chart.js.
+    //    sentIdx — абсолютный индекс в кольцевом буфере; при prune сдвигаем его назад
+    //    и синхронизируем chart-length === sentIdx - dropped.
     let drop = 0;
-    while (drop < pruneTo) {
+    while (drop < n) {
       const s = this.sim.historyAt(drop);
       if (!s || s.t >= tMin) break;
       drop++;
     }
-    if (drop > 0) {
-      for (const ds of this.chartP.data.datasets) (ds.data as unknown[]).splice(0, drop);
-      for (const ds of this.chartQ.data.datasets) (ds.data as unknown[]).splice(0, drop);
-      this.sentIdx -= drop;
+    const chartLen = (this.chartP.data.datasets[0].data as unknown[]).length;
+    if (drop > 0 && chartLen > 0) {
+      const cnt = Math.min(drop, chartLen);
+      for (const ds of this.chartP.data.datasets) (ds.data as unknown[]).splice(0, cnt);
+      for (const ds of this.chartQ.data.datasets) (ds.data as unknown[]).splice(0, cnt);
     }
+    this.sentIdx -= drop; // теперь sentIdx — кол-во точек в окне == длине графиков
 
     // 2) Догружаем только новые сэмплы (догоняющая загрузка, O(new))
-    for (let i = this.sentIdx; i < n; i++) {
+    for (let i = Math.max(this.sentIdx, 0); i < n; i++) {
       const s = this.sim.historyAt(i);
       if (!s || s.t < tMin) continue;
       this.pushSample(s);
     }
     this.sentIdx = n;
+    this.lastSentT = latest.t;
 
     this.applyXRange(tMin);
     this.chartP.update('none');
@@ -157,12 +163,15 @@ export class TelemetryChart {
     for (const ds of [cp[0], cp[1], cq[0], cq[1]]) (ds.data as unknown[]).length = 0;
 
     const n = this.sim.historyLength;
+    let lastT = -1;
     for (let i = 0; i < n; i++) {
       const s = this.sim.historyAt(i);
       if (!s || s.t < tMin) continue;
       this.pushSample(s);
+      lastT = s.t;
     }
     this.sentIdx = n;
+    this.lastSentT = lastT;
 
     this.applyXRange(tMin);
     this.chartP.update('none');

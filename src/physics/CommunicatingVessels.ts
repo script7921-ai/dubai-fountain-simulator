@@ -79,4 +79,9 @@ export class CommunicatingVessels {
   forceDrain(fraction: number): void {
     this.level = clamp(this.level * (1 - fraction), 0, this.lakeHead);
   }
+
+  /** Мгновенное заполнение камеры (полный сброс симуляции) */
+  refill(): void {
+    this.level = this.lakeHead;
+  }
 }
