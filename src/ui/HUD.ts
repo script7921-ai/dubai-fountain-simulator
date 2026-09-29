@@ -33,8 +33,21 @@ const PHASE_LABEL: Record<GunPhase, { ru: string; led: string }> = {
 export class HUD {
   private root: HTMLElement;
   private canvases = new Map<string, HTMLCanvasElement>();
+  private gaugeCtxs = new Map<string, CanvasRenderingContext2D>();
   private needles = new Map<string, number>(); // сглаживание стрелки
   private digital: Record<string, HTMLElement> = {};
+
+  // Кэшированные DOM-узлы (искать один раз вместо querySelector каждый кадр)
+  private ledEl!: HTMLElement;
+  private phaseEl!: HTMLElement;
+  private clockEl!: HTMLElement;
+  private compassCtx!: CanvasRenderingContext2D;
+  private jetBar!: HTMLElement | null;
+  private lastLedClass = '';
+  private lastPhaseColor = '';
+  /** HUD обновляется не чаще 30 Гц — человеческий глаз не различает быстрее, а CPU экономится вдвое */
+  private static readonly UI_INTERVAL = 1 / 30;
+  private uiAccum = Infinity;
 
   constructor(container: HTMLElement, private sim: FountainSimulator) {
     this.root = document.createElement('div');

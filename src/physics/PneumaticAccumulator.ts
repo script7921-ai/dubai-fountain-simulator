@@ -18,8 +18,9 @@ const GEO = SHOOTER_GEOMETRY;
 const { GAMMA_AIR, P_ATM, T_AMBIENT_K } = CONSTANTS;
 
 export class PneumaticAccumulator {
-  /** Текущий объём газа = базовый V0 + смещение поршня */
-  private v0: number; // эталонный объём при давлении зарядки
+  /** Эталонный объём газа при давлении зарядки, м³ */
+  private readonly v0: number;
+  private gasVolume: number; // текущий объём газа (V0 + смещение поршня), м³
   private pAbs: number; // абсолютное давление газа, Па
   private tGas: number; // температура газа, K
   private chargeTargetPa: number;
@@ -29,6 +30,7 @@ export class PneumaticAccumulator {
 
   constructor() {
     this.v0 = GEO.accumulatorVolume;
+    this.gasVolume = GEO.accumulatorVolume;
     this.chargeTargetPa = 7.5e5 + P_ATM;
     this.pAbs = this.chargeTargetPa;
     this.tGas = T_AMBIENT_K;
@@ -47,40 +49,44 @@ export class PneumaticAccumulator {
     return this.tGas;
   }
 
+  /** Текущий объём газа в ресивере, м³ */
+  get currentGasVolume(): number {
+    return this.gasVolume;
+  }
+
   /** Абсолютное давление как функция приведённого объёма (адиабата) */
   pressureAtVolume(v: number): number {
     const vv = Math.max(0.05 * this.v0, v);
-    return this.pAbs * Math.pow(this.v0 / vv, GAMMA_AIR);
+    return this.pAbs * Math.pow(this.gasVolume / vv, GAMMA_AIR);
   }
 
   /**
    * Интегрирование за шаг dt.
-   * @param displacedVolume м³ — объём, который газ занял сверх текущего (движение поршня)
-   * @param supplyFlow м³/с нормализованного (при P_atm) воздуха от компрессора подзарядки
+   * @param pistonSpeed м/с — скорость водяного поршня (>0 = выстрел, газ расширяется)
    * @param valveOpening 0..1 — ударный клапан (слив в рабочую камеру моделируется снаружи)
+   * @param supplyFlowM3s м³/с нормализованного (при P_atm) воздуха от компрессора подзарядки
    */
   step(dt: number, pistonSpeed: number, valveOpening: number, supplyFlowM3s: number): void {
-    // Расширение газа из-за движения поршня
+    // Расшижение/сжатие газа из-за движения поршня
     const dV = GEO.barrelArea * pistonSpeed * dt;
     const gammaMinus1 = GAMMA_AIR - 1;
 
-    if (dV > 0) {
-      // адиабатическое расширение: dP = -γ P dV / V
-      this.pAbs *= Math.pow(Math.max(0.05, (this.v0 + 0) / (this.v0 + dV)), GAMMA_AIR);
-      // охлаждение: T·V^(γ-1)=const
-      this.tGas *= Math.pow((this.v0 + dV) / this.v0, gammaMinus1);
-    } else if (dV < 0) {
-      this.pAbs *= Math.pow(this.v0 / Math.max(0.05, this.v0 + dV), GAMMA_AIR);
-      this.tGas *= Math.pow(this.v0 / Math.max(0.05, this.v0 + dV), gammaMinus1);
+    if (dV !== 0) {
+      const vNext = Math.max(0.05 * this.v0, this.gasVolume + dV);
+      const ratio = this.gasVolume / vNext;
+      // адиабата: P·V^γ = const, T·V^(γ-1) = const
+      this.pAbs *= Math.pow(ratio, GAMMA_AIR);
+      this.tGas *= Math.pow(ratio, gammaMinus1);
+      this.gasVolume = vNext;
     }
-    this.v0 += dV;
 
     // Подзарядка от компрессорной станции (изотермический приток массы → рост P)
     if (supplyFlowM3s > 0 && this.pAbs < this.chargeTargetPa) {
       // эквивалентный прирост давления: dP = γ·P·dV/V, dV = Q_atm·dt·(P_atm/P)
       const dVc = (supplyFlowM3s * dt * P_ATM) / this.pAbs;
-      this.pAbs *= Math.pow((this.v0 + dVc) / this.v0, GAMMA_AIR);
-      this.v0 += dVc;
+      const vNext = Math.min(this.v0, this.gasVolume + dVc);
+      this.pAbs *= Math.pow(this.gasVolume / vNext, GAMMA_AIR);
+      this.gasVolume = vNext;
     }
 
     // Дроссельная утечка через неплотности (критический расход при больших перепадах)
@@ -91,7 +97,7 @@ export class PneumaticAccumulator {
         (0.6 + 4 * valveOpening) *
         this.pAbs *
         0.0009; // эмпирическая кондуктанс-модель, Па-экв/с
-      const dPe = (mdot * dt) / this.v0;
+      const dPe = (mdot * dt) / this.gasVolume;
       this.pAbs = Math.max(P_ATM, this.pAbs - dPe);
     }
 
@@ -104,13 +110,19 @@ export class PneumaticAccumulator {
 
   /** Сброс после выстрела: объём возвращается (поршень откатывается), газ остывает */
   resetAfterRecoil(newVolumeFraction: number): void {
-    this.v0 = GEO.accumulatorVolume * clamp(newVolumeFraction, 0.2, 1.6);
+    this.gasVolume = GEO.accumulatorVolume * clamp(newVolumeFraction, 0.2, 1.0);
   }
 
   /** Полная зарядка до уставки (для кнопки «ARM») */
   forceChargeToTarget(): void {
     this.pAbs = this.chargeTargetPa;
-    this.v0 = GEO.accumulatorVolume;
+    this.gasVolume = this.v0;
+    this.tGas = T_AMBIENT_K;
+  }
+
+  /** Сброс в атмосферу (аварийный клапан VENT) */
+  ventToAtmosphere(): void {
+    this.pAbs = P_ATM * 1.02;
     this.tGas = T_AMBIENT_K;
   }
 

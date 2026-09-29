@@ -29,7 +29,6 @@ import { PneumaticAccumulator } from './PneumaticAccumulator';
 import { CommunicatingVessels } from './CommunicatingVessels';
 
 const GEO = SHOOTER_GEOMETRY;
-const { P_ATM } = CONSTANTS;
 
 export interface TelemetrySample {
   t: number;
@@ -99,10 +98,25 @@ export class FountainSimulator {
   /** Цикл авто-шоу */
   private showTimer = 0;
 
-  /** История для графиков */
-  history: TelemetrySample[] = [];
+  /** История для графиков: кольцевой буфер фиксированной ёмкости (без утечек памяти) */
+  readonly HISTORY_SIZE = 60 * 40; // 40-секундное окно @ 60 Гц
+  private histBuf: TelemetrySample[] = [];
+  private histHead = 0; // сюда будет записан следующий сэмпл
+  private histCount = 0;
   private historyAccum = 0;
   private lastRe = 0;
+
+  /** Итерация сэмплов от старых к новым (для графиков) */
+  *history(): IterableIterator<TelemetrySample> {
+    const start = (this.histHead - this.histCount + this.HISTORY_SIZE) % this.HISTORY_SIZE;
+    for (let i = 0; i < this.histCount; i++) {
+      yield this.histBuf[(start + i) % this.HISTORY_SIZE];
+    }
+  }
+
+  get historyLength(): number {
+    return this.histCount;
+  }
 
   constructor() {
     this.accumulator.setChargePressureGauge(this.config.chargePressureBar * 1e5);
@@ -131,8 +145,9 @@ export class FountainSimulator {
 
   emergencyVent(): void {
     // Аварийный сброс давления
-    this.accumulator.resetAfterRecoil(1.4);
-    (this.accumulator as unknown as { pAbs: number }).pAbs = P_ATM * 1.02;
+    this.accumulator.resetAfterRecoil(1.0);
+    this.accumulator.ventToAtmosphere();
+    this.chamberPGauge = 0;
   }
 
   private enterPhase(p: GunPhase): void {
@@ -253,8 +268,15 @@ export class FountainSimulator {
 
       case GunPhase.FIRE: {
         const pulseS = this.config.valvePulseMs / 1000;
+        // Порода «выстрелила» — ствол опорожняется, дутьё воздуха в озеро бессмысленно:
+        // клапан принудительно закрывается сразу после импульса (экономия заряда ресивера).
+        if (this.pistonTravel >= 0.995 && this.phaseTime > pulseS * 0.5) this.valveOpening = 0;
         const spent = this.pistonTravel >= 0.995 || this.phaseTime > pulseS + 0.55;
         if (this.phaseTime > pulseS && this.valveOpening < 0.05 && (spent || this.phaseTime > pulseS + 0.2)) {
+          this.enterPhase(GunPhase.RECOVER);
+        } else if (this.phaseTime > pulseS + 3) {
+          // страховка: никогда не залипать в FIRE
+          this.valveOpening = 0;
           this.enterPhase(GunPhase.RECOVER);
         }
         break;
@@ -267,12 +289,16 @@ export class FountainSimulator {
           this.pistonTravel = 0;
           this.pistonSpeed = 0;
           this.muzzleBroken = false;
+          this.accumulator.resetAfterRecoil(1.0); // объём газа возвращается при откате поршня
           this.enterPhase(GunPhase.IDLE);
           this.bus.emit({ type: 'recharge-complete' });
         }
         // страховка от зависания
         if (this.phaseTime > 6) {
           this.pistonTravel = 0;
+          this.pistonSpeed = 0;
+          this.muzzleBroken = false;
+          this.accumulator.resetAfterRecoil(1.0);
           this.enterPhase(GunPhase.IDLE);
           this.bus.emit({ type: 'recharge-complete' });
         }
@@ -332,9 +358,11 @@ export class FountainSimulator {
       azimuth: this.oarsmanAzimuth,
       elevation: this.oarsmanElevation,
     };
-    this.history.push(s);
-    const MAX = 60 * 40; // 40 секунд окно
-    if (this.history.length > MAX) this.history.splice(0, this.history.length - MAX);
+    // Кольцевая запись: O(1), без splice/push и без аллокаций при переполнении окна
+    if (this.histBuf.length < this.HISTORY_SIZE) this.histBuf.push(s);
+    else this.histBuf[this.histHead] = s;
+    this.histHead = (this.histHead + 1) % this.HISTORY_SIZE;
+    if (this.histCount < this.HISTORY_SIZE) this.histCount++;
   }
 
   /** Снимок для HUD */
