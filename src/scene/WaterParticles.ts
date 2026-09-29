@@ -71,10 +71,11 @@ void main() {
   float frontDecay = exp(-age * 0.55);
   float v0 = uSpeed * (0.55 + 0.45 * frontDecay) * (0.85 + 0.3 * hash(aSeed * 13.0));
 
-  // Конус разлёта вокруг оси ствола
+  // Конус разлёта вокруг оси ствола (референтная ось без вырождения при uDir ∥ Y)
   vec2 rnd = vec2(hash(aSeed * 7.0), hash(aSeed * 17.0)) - 0.5;
   vec3 j = normalize(vec3(aJitter.xy + rnd, 1e-3));
-  vec3 tangent = normalize(cross(uDir, vec3(0.0, 1.0, 0.0) + vec3(1e-3)));
+  vec3 refAxis = abs(uDir.y) < 0.9 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
+  vec3 tangent = normalize(cross(uDir, refAxis));
   vec3 bitangent = cross(uDir, tangent);
   float ang = uSpread * (0.35 + 0.65 * hash(aSeed * 31.0)) * sqrt(age * 0.8 + 0.15);
   vec3 dir = normalize(uDir + (tangent * j.x + bitangent * j.y) * ang);
@@ -96,13 +97,15 @@ void main() {
 
   vSpeedT = clamp(v0 / 60.0, 0.0, 1.0);
 
-  // Billboard в экранном пространстве
-  vec4 mv = modelViewMatrix * vec4(pos, 1.0);
+  // Billboard в экранном пространстве: мировой размер капли проецируется
+  // через view-матрицу (корректная перспектива, масштаб по devicePixelRatio)
   float sizeBase = mix(0.10, 0.34, aJitter.z);
   float grow = mix(1.0, 2.6, smoothstep(0.4, 1.0, age / life));
   float shrink = 1.0 - splashKill * 0.7;
-  float size = sizeBase * grow * shrink * (1.0 + uTurb * 0.5);
-  mv.xy += position.xy * size * uPixelRatio * 0.9;
+  float size = sizeBase * grow * shrink * (1.0 + uTurb * 0.5) * uPixelRatio;
+
+  vec4 mv = modelViewMatrix * vec4(pos, 1.0);
+  mv.xy += position.xy * size;
   gl_Position = projectionMatrix * mv;
 }
 `;
@@ -134,7 +137,14 @@ void main() {
 
   float alpha = disc * (1.0 - t * t) * mix(0.35, 0.9, vSpeedT) * uFade;
   alpha *= 0.8 + 0.2 * sin(vSeed * 100.0 + vAge * 30.0);
-  gl_FragColor = vec4(col * (0.7 + vSpeedT), alpha);
+
+  // Конвертация из линейного пространства в выходной color space и
+  // тонмаппинг — иначе при renderer.outputColorSpace = SRGB / ACES цвета
+  // шейдерных частиц выглядят «выжженными» и рассинхронизированы с PBR-сценой
+  vec4 outColor = vec4(col * (0.7 + vSpeedT), alpha);
+  #include <tonemapping_fragment>
+  #include <colorspace_fragment>
+  gl_FragColor = outColor;
 }
 `;
 
@@ -201,8 +211,11 @@ export class WaterParticles {
   burst(p: BurstParams, density = 1): void {
     const count = Math.floor(clampNum(20_000 * density * (p.flowLps / 900 + 0.35), 4_000, MAX_PARTICLES));
     const arr = this.aSpawn.array as Float32Array;
+    // Спавним от текущего uTime (визуальные часы), а не от simTime физики:
+    // при timeScale ≠ 1 они расходятся и капли «замирают»/стартуют с отрицательным возрастом
+    const now = this.material.uniforms.uTime.value as number;
     for (let i = 0; i < count; i++) {
-      arr[this.cursor] = this.simTime;
+      arr[this.cursor] = now;
       this.cursor = (this.cursor + 1) % MAX_PARTICLES;
     }
     this.aSpawn.needsUpdate = true;

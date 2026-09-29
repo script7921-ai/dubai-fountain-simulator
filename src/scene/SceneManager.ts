@@ -58,6 +58,9 @@ export class SceneManager {
     this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.setSize(container.clientWidth, container.clientHeight);
+    // Явно фиксируем колор-пайплайн: по умолчанию в r150+ он и так sRGB,
+    // но явная установка защищает от рассинхрона с #include <colorspace_fragment> в шейдерах
+    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
