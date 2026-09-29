@@ -1,5 +1,6 @@
 (empty)
-release/
-dubai-fountain-release.zip
+!release/dubai-fountain-release.zip
+release/dubai-fountain/
+!dubai-fountain-release.zip
 *.map
 release/dubai-fountain/assets/*.map
