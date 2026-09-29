@@ -154,7 +154,7 @@ export class WaterParticles {
   private material: THREE.ShaderMaterial;
   private aSpawn: THREE.InstancedBufferAttribute;
   private cursor = 0;
-  private simTime = 0;
+
 
   constructor(private scene: THREE.Scene) {
     const base = new THREE.PlaneGeometry(1, 1);
@@ -232,16 +232,19 @@ export class WaterParticles {
   /** Фоновая слабая эмиссия оседания (для «живости» после выстрела) */
   ambientDrip(): void {
     const arr = this.aSpawn.array as Float32Array;
+    const now = this.material.uniforms.uTime.value as number;
     for (let k = 0; k < 80; k++) {
-      arr[this.cursor] = this.simTime;
+      arr[this.cursor] = now;
       this.cursor = (this.cursor + 1) % MAX_PARTICLES;
     }
     this.aSpawn.needsUpdate = true;
   }
 
   update(simTime: number, _dt: number): void {
-    this.simTime = simTime;
-    this.material.uniforms.uTime.value = simTime;
+    // uTime — визуальные часы сцены (realDt), синхронно со спавном в burst();
+    // физический simTime здесь не используется напрямую (timeScale ≠ 1 рассинхронил бы капли)
+    void simTime;
+    this.material.uniforms.uTime.value += _dt;
   }
 
   setPixelRatio(pr: number): void {
