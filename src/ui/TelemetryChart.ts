@@ -56,7 +56,12 @@ export class TelemetryChart {
       </div>
     `;
 
-    const common = {
+    // БАЗА опций без функций: structuredClone не умеет клонировать колбэки
+    // (DOMException в WebView/Termux). Функции-колбэки назначаются после клонирования.
+    const timeTickCb = (v: unknown) => `${Number(v).toFixed(1)}s`;
+
+    type ScaleOpts = Record<string, unknown>;
+    const commonBase: Record<string, unknown> & { scales: Record<string, ScaleOpts> } = {
       responsive: true,
       animation: false as const,
       maintainAspectRatio: false,
@@ -66,7 +71,7 @@ export class TelemetryChart {
         x: {
           type: 'linear' as const,
           grid: { color: 'rgba(56,189,248,0.06)' },
-          ticks: { color: '#475569', font: { size: 8, family: 'JetBrains Mono' }, maxTicksLimit: 9, callback: (v: unknown) => `${Number(v).toFixed(1)}s` },
+          ticks: { color: '#475569', font: { size: 8, family: 'JetBrains Mono' }, maxTicksLimit: 9 },
         },
         y: {
           min: 0,
@@ -80,6 +85,10 @@ export class TelemetryChart {
       },
     };
 
+    const optionsP = structuredClone(commonBase);
+    // назначаем функцию уже в клон — она не участвует в сериализации
+    (optionsP.scales.x.ticks as Record<string, unknown>).callback = timeTickCb;
+
     this.chartP = new Chart((this.root.querySelector('#chart-p') as HTMLCanvasElement), {
       type: 'line',
       data: {
@@ -88,8 +97,21 @@ export class TelemetryChart {
           { label: 'P камеры', data: [], borderColor: '#fbbf24', backgroundColor: 'rgba(251,191,36,0.06)', fill: true },
         ],
       },
-      options: structuredClone(common),
+      options: optionsP,
     });
+
+    const qScales = structuredClone(commonBase.scales);
+    qScales.y.title = { display: false };
+    qScales.y1 = {
+      position: 'right' as const,
+      min: 0,
+      grid: { drawOnChartArea: false },
+      ticks: { color: '#475569', font: { size: 8, family: 'JetBrains Mono' }, maxTicksLimit: 5 },
+    };
+    (qScales.x.ticks as Record<string, unknown>).callback = timeTickCb;
+
+    const optionsQ = structuredClone(commonBase);
+    optionsQ.scales = qScales;
 
     this.chartQ = new Chart((this.root.querySelector('#chart-q') as HTMLCanvasElement), {
       type: 'line',
@@ -99,17 +121,7 @@ export class TelemetryChart {
           { label: 'V, м/с', data: [], borderColor: '#34d399', backgroundColor: 'transparent', fill: false, yAxisID: 'y1' },
         ],
       },
-      options: Object.assign(structuredClone(common), {
-        scales: Object.assign(structuredClone(common.scales), {
-          y: { ...common.scales.y, title: { display: false } },
-          y1: {
-            position: 'right' as const,
-            min: 0,
-            grid: { drawOnChartArea: false },
-            ticks: { color: '#475569', font: { size: 8, family: 'JetBrains Mono' }, maxTicksLimit: 5 },
-          },
-        }),
-      }),
+      options: optionsQ,
     });
   }
 
