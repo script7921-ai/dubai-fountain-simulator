@@ -89,7 +89,13 @@ chmod +x "$PROJECT_DIR/run.sh" 2>/dev/null || true
 
 # --- 4. Запуск ---------------------------------------------------------------
 cd "$PROJECT_DIR"
-if command -v python >/dev/null 2>&1; then
+# serve.py отдаёт Cache-Control: no-store — иначе WebView Android держит в кэше
+# старый index.html и подгружает устаревший (уже исправленный) JS-бандл.
+if command -v python >/dev/null 2>&1 && [ -f serve.py ]; then
+  SERVER=(python serve.py "$PORT")
+elif command -v python3 >/dev/null 2>&1 && [ -f serve.py ]; then
+  SERVER=(python3 serve.py "$PORT")
+elif command -v python >/dev/null 2>&1; then
   SERVER=(python -m http.server "$PORT" --bind 0.0.0.0)
 elif command -v busybox >/dev/null 2>&1; then
   SERVER=(busybox httpd -f -p "$PORT" -h .)
