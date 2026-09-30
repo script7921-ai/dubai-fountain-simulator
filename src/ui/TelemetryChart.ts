@@ -24,6 +24,20 @@ Chart.register(LineController, LineElement, PointElement, LinearScale, CategoryS
 /** Размер скользящего окна графиков, сек */
 const WINDOW_S = 8;
 
+/**
+ * Сколько отправленных точек ещё остаётся в окне [simTime-WINDOW_S, simTime].
+ * Верхняя оценка: не больше числа отправленных (sentIdx), не больше размера
+ * кольцевого буфера симулятора и не больше ёмкости окна WINDOW_S*HZ.
+ * Функция монотонна по n, поэтому «remove = dataLen - keep» никогда не удаляет
+ * новые данные; длина графиков жёстко ограничена CAP точками — рост исключён.
+ */
+const SAMPLE_HZ = 60;
+const HISTORY_CAP = 60 * 40; // синхронно с FountainSimulator.HISTORY_SIZE
+const WINDOW_CAP = WINDOW_S * SAMPLE_HZ + 2; // запас на квантование dt
+function sentIdxInWindow(sentIdx: number, n: number): number {
+  return Math.max(0, Math.min(sentIdx, n, HISTORY_CAP, WINDOW_CAP));
+}
+
 export class TelemetryChart {
   private chartP: Chart;
   private chartQ: Chart;
@@ -36,23 +50,28 @@ export class TelemetryChart {
   constructor(container: HTMLElement, private sim: FountainSimulator) {
     this.root = document.createElement('div');
     this.root.id = 'telemetry';
-    this.root.className = 'absolute bottom-3 left-1/2 -translate-x-1/2 z-10 flex gap-2 pointer-events-auto';
+    this.root.className =
+      'absolute bottom-2 left-1/2 -translate-x-1/2 z-10 flex gap-2 max-w-[98vw] pointer-events-auto';
     container.appendChild(this.root);
 
+    // ВАЖНО: wrapper с фиксированной высотой (h-24) обязателен.
+    // Chart.js responsive + maintainAspectRatio:false растягивает canvas по высоте
+    // родителя; без ограничивающего контейнера каждый resize-цикл увеличивал панель
+    // («график съедает экран» на мобильных WebView).
     this.root.innerHTML = /* html */ `
-      <div class="hud-panel p-2 w-[340px] md:w-[430px]">
+      <div class="hud-panel p-2 w-[46vw] min-w-[170px] max-w-[430px] shrink-0">
         <div class="flex justify-between items-center mb-0.5">
-          <span class="hud-title">P(t) · РЕСИВЕР / КАМЕРА, бар</span>
-          <span class="text-[8px] text-slate-500">ОКНО 8 c</span>
+          <span class="hud-title truncate">P(t) · bar</span>
+          <span class="text-[8px] text-slate-500 shrink-0">8 c</span>
         </div>
-        <canvas id="chart-p" height="96"></canvas>
+        <div class="relative h-24 w-full"><canvas id="chart-p"></canvas></div>
       </div>
-      <div class="hud-panel p-2 w-[340px] md:w-[430px] hidden sm:block">
+      <div class="hud-panel p-2 w-[46vw] min-w-[170px] max-w-[430px] shrink-0 hidden sm:block">
         <div class="flex justify-between items-center mb-0.5">
-          <span class="hud-title">Q(t) · РАСХОД / ФРОНТ СТРУИ</span>
-          <span class="text-[8px] text-slate-500">ОКНО 8 c</span>
+          <span class="hud-title truncate">Q(t) · л/с · м/с</span>
+          <span class="text-[8px] text-slate-500 shrink-0">8 c</span>
         </div>
-        <canvas id="chart-q" height="96"></canvas>
+        <div class="relative h-24 w-full"><canvas id="chart-q"></canvas></div>
       </div>
     `;
 
@@ -127,45 +146,55 @@ export class TelemetryChart {
 
   /** Кадровый апдейт: догружаем новые сэмплы, режем окно 8 сек */
   update(): void {
-    // Перезапуск симуляции (t «омолодел») или смена окна → полная пересборка
-    const latest = this.sim.historyAt(this.sim.historyLength - 1);
+    const n = this.sim.historyLength;
+    // Перезапуск симуляции (история пуста или t «омолодел») → полная пересборка
+    const latest = n > 0 ? this.sim.historyAt(n - 1) : undefined;
     if (!latest || latest.t < this.lastSentT) {
       this.rebuildWindow(this.sim.time - WINDOW_S);
       return;
     }
 
-    const n = this.sim.historyLength;
     const tMin = this.sim.time - WINDOW_S;
 
-    // 1) Сдвигаем левую границу окна: удаляем устаревшие точки с начала массивов Chart.js.
-    //    sentIdx — абсолютный индекс в кольцевом буфере; при prune сдвигаем его назад
-    //    и синхронизируем chart-length === sentIdx - dropped.
-    let drop = 0;
-    while (drop < n) {
-      const s = this.sim.historyAt(drop);
-      if (!s || s.t >= tMin) break;
-      drop++;
+    // Инкрементальная поддержка скользящего окна. Два уровня защиты от роста:
+    // 1) trimToCapacity() — жёсткий потолок числа точек (гарантия bounded);
+    // 2) prune по keep()-оценке — точное удаление устаревших точек окна.
+    this.trimToCapacity();
+    const dataLen = (this.chartP.data.datasets[0].data as unknown[]).length;
+    let remove = dataLen - sentIdxInWindow(this.sentIdx, n);
+    if (!(remove > 0)) remove = 0;
+    if (remove > dataLen) remove = dataLen;
+    if (remove > 0) {
+      for (const ds of this.chartP.data.datasets) (ds.data as unknown[]).splice(0, remove);
+      for (const ds of this.chartQ.data.datasets) (ds.data as unknown[]).splice(0, remove);
     }
-    const chartLen = (this.chartP.data.datasets[0].data as unknown[]).length;
-    if (drop > 0 && chartLen > 0) {
-      const cnt = Math.min(drop, chartLen);
-      for (const ds of this.chartP.data.datasets) (ds.data as unknown[]).splice(0, cnt);
-      for (const ds of this.chartQ.data.datasets) (ds.data as unknown[]).splice(0, cnt);
-    }
-    this.sentIdx -= drop; // теперь sentIdx — кол-во точек в окне == длине графиков
+    this.sentIdx -= remove;
 
-    // 2) Догружаем только новые сэмплы (догоняющая загрузка, O(new))
-    for (let i = Math.max(this.sentIdx, 0); i < n; i++) {
+    // Догружаем только новые сэмплы (догоняющая загрузка, O(new))
+    for (let i = this.sentIdx; i < n; i++) {
       const s = this.sim.historyAt(i);
-      if (!s || s.t < tMin) continue;
+      if (!s) continue;
       this.pushSample(s);
     }
     this.sentIdx = n;
     this.lastSentT = latest.t;
+    this.trimToCapacity();
 
     this.applyXRange(tMin);
     this.chartP.update('none');
     this.chartQ.update('none');
+  }
+
+  /** Жёсткий потолок: никогда не держать в графиках больше WINDOW_CAP точек */
+  private trimToCapacity(): void {
+    const len = (this.chartP.data.datasets[0].data as unknown[]).length;
+    const over = len - WINDOW_CAP;
+    if (over > 0) {
+      const cnt = Math.min(over, len);
+      for (const ds of this.chartP.data.datasets) (ds.data as unknown[]).splice(0, cnt);
+      for (const ds of this.chartQ.data.datasets) (ds.data as unknown[]).splice(0, cnt);
+      this.sentIdx = Math.max(0, this.sentIdx - cnt);
+    }
   }
 
   /** Полная пересборка окна (reset симуляции / первый кадр) */
@@ -184,6 +213,7 @@ export class TelemetryChart {
     }
     this.sentIdx = n;
     this.lastSentT = lastT;
+    this.trimToCapacity();
 
     this.applyXRange(tMin);
     this.chartP.update('none');

@@ -352,7 +352,9 @@ export class FountainSimulator {
   private sampleHistory(dt: number): void {
     this.historyAccum += dt;
     if (this.historyAccum < 1 / 60) return; // 60 Гц дискретизация телеметрии
-    this.historyAccum = 0;
+    // ВАЖНО: не сбрасывать в 0 — при dt > периода накопление остатка даёт
+    // «пропущенные» кадры и дрейф частоты сэмплирования.
+    this.historyAccum %= 1 / 60;
     const s: TelemetrySample = {
       t: this.time,
       pAccumBar: this.accumulator.gaugePressurePa / 1e5,
