@@ -99,7 +99,7 @@
 <div id="deck">
 
   <!-- 1. ТИТУЛ : 3D панорама озера -->
-  <section class="slide bg-night active">
+  <section class="slide bg-night active data-scene="panorama">
     <div class="content">
       <div class="kicker">The Dubai Fountain · Burj Lake</div>
       <h1>Дубайский фонтан<br><span class="accent">крупнейший танцующий фонтан мира</span></h1>
@@ -109,7 +109,7 @@
   </section>
 
   <!-- 2. ОБЪЕКТ : модель озера с рингами -->
-  <section class="slide bg-water">
+  <section class="slide bg-water data-scene="lake">
     <div class="content">
       <h2>Анатомия озера <span class="accent">Burj Lake</span></h2>
       <div class="grid">
@@ -123,7 +123,7 @@
   </section>
 
   <!-- 3. РИНГИ И ФОРСУНКИ : крупный план pipes/nozzles -->
-  <section class="slide bg-deep">
+  <section class="slide bg-deep data-scene="rings">
     <div class="content">
       <h2>Ринги: <span class="accent2">трубы, из которых «растёт» шоу</span></h2>
       <ul class="ticks">
@@ -137,7 +137,7 @@
   </section>
 
   <!-- 4. БАЛЛИСТИКА : 3D растущая струя -->
-  <section class="slide bg-night">
+  <section class="slide bg-night data-scene="ballistics">
     <div class="content">
       <div class="kicker">Ballistics</div>
       <h2>Почему вода долетает до <span class="accent">150 метров</span></h2>
@@ -152,7 +152,7 @@
   </section>
 
   <!-- 5. НАСОСНАЯ + ПНЕВМОАККУМУЛЯТОР : разрез бака -->
-  <section class="slide bg-gold">
+  <section class="slide bg-gold data-scene="accumulator">
     <div class="content">
       <div class="kicker">How it works · cutaway</div>
       <h2>Сердце залпа — <span class="accent2">пневмоаккумулятор</span></h2>
@@ -167,7 +167,7 @@
   </section>
 
   <!-- 6. ЭЛЕКТРОЩИТ И УПРАВЛЕНИЕ -->
-  <section class="slide bg-deep">
+  <section class="slide bg-deep data-scene="control">
     <div class="content">
       <div class="kicker">Show control</div>
       <h2>Оркестр из <span class="accent">насосных и щитов управления</span></h2>
@@ -181,7 +181,7 @@
   </section>
 
   <!-- 7. ХОРЕОГРАФИЯ : несколько струй -->
-  <section class="slide bg-water">
+  <section class="slide bg-water data-scene="choreo">
     <div class="content">
       <h2>Хореография воды</h2>
       <ul class="ticks">
@@ -194,7 +194,7 @@
   </section>
 
   <!-- 8. ФИНАЛ : панорама с полным шоу -->
-  <section class="slide bg-night">
+  <section class="slide bg-night data-scene="finale">
     <div class="content">
       <h1>Вода, поставленная <span class="accent2">на музыку</span></h1>
       <p class="sub">Дубайский фонтан — инженерный проект WET Design (авторы фонтана Bellagio), открытый в 2009 году стоимостью $218 млн. Гидравлика, ставшая искусством.</p>
@@ -307,8 +307,9 @@ function jetField(defs){ // defs: [{pos:[x,z], v0, tilt, phase}]
       const cyc=(t*d.rate+d.phase)%1;               // shot cycle 0..1
       for(let i=0;i<per;i++){
         const u=i/per;                               // droplet slot
-        const tt=cyc*(2*d.v0/G)*u;                   // flight time fraction scaled by slot
-        const life=Math.max(0,1-tt/(2*d.v0/G));
+        const T=2*d.v0/G;                            // full ballistic flight time
+        const tt=((cyc+u)%1)*T;                      // staggered launch within the cycle
+        const life=Math.max(0,1-tt/T);
         const y=Math.max(0, d.v0*tt-.5*G*tt*tt)*d.k;
         const spread=u*u*6;
         const sx=Math.sin(tt*.6+d.phase*9)*spread*.15;
@@ -419,7 +420,7 @@ function buildAccumulator(){
       const load = ph<.5 ? ph/.5 : (ph<.75 ? Math.max(0,1-(ph-.5)/.25) : 0);
       const airH=6+load*34;
       air.scale.set(24,airH/2,24); air.position.y=4+airH/2;
-      const wh=Math.max(2,52-airH-6); water.scale.y=wh/1; water.position.y=4+wh/2;
+      const wh=Math.max(2,52-airH); water.scale.y=wh; water.position.y=4+wh/2;
       valve.rotation.y=ph>.5&&ph<.75? t*8 : 0;
       pump.rotation.y=t*(ph<.5?6:1);
     },
